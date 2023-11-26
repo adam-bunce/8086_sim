@@ -32,11 +32,20 @@ func ImpRm(rm uint8) InstructionBits {
 		HasValueSet: true,
 	}
 }
+
 func ImpD(d uint8) InstructionBits {
 	return InstructionBits{
 		Usage:       Bits_D,
 		BitCount:    0,
 		Value:       d,
+		HasValueSet: true,
+	}
+}
+func ImpW(w uint8) InstructionBits {
+	return InstructionBits{
+		Usage:       Bits_W,
+		BitCount:    0,
+		Value:       w,
 		HasValueSet: true,
 	}
 }
@@ -101,4 +110,16 @@ var instTable = []InstructionEncoding{
 	{Op_jg, []InstructionBits{L("01111111"), DATA, IS_JUMP}},
 	{Op_ja, []InstructionBits{L("01110111"), DATA, IS_JUMP}},
 	{Op_jns, []InstructionBits{L("01111001"), DATA, IS_JUMP}},
+	{Op_jmp, []InstructionBits{L("11101001"), DATA, DATA_IF_W, ImpW(1), IS_JUMP}}, // direct within segment
+	{Op_jmp, []InstructionBits{L("11101011"), DATA, IS_JUMP}},                     // direct within segment short
+
+	{Op_push, []InstructionBits{L("11111111"), MOD, L("110"), RM, ImpD(0), ImpW(1)}}, // Reg/Memory
+	{Op_push, []InstructionBits{L("01010"), REG, ImpD(1), ImpW(1)}},                  // Register
+
+	{Op_pop, []InstructionBits{L("10001111"), MOD, L("000"), RM, ImpD(0), ImpW(1)}}, // Reg/memory
+	{Op_pop, []InstructionBits{L("01011"), REG, ImpD(1), ImpW(1)}},                  // Register
+
+	{Op_call, []InstructionBits{L("11101000"), DATA, DATA_IF_W, ImpW(1)}}, // direct within segment
+
+	{Op_ret, []InstructionBits{L("11000011")}}, // within segment
 }

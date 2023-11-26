@@ -8,7 +8,6 @@ import (
 )
 
 func LoadInstructions(fileName string) (int, error) {
-	fmt.Println(os.Getwd())
 	file, err := os.ReadFile(fileName)
 	if err != nil {
 		return 0, err
@@ -18,17 +17,26 @@ func LoadInstructions(fileName string) (int, error) {
 	return len(file), nil
 }
 
+const (
+	ShowInst int = iota
+	ShowCycles
+	ShowInstBytes
+)
+
 func main() {
 	dumpMemory := flag.Bool("savemem", false, "save final memory state to .DATA file")
 	dumpRegisters := flag.Bool("dumpreg", false, "output final register state")
-	printInstructions := flag.Bool("print", false, "show effect of each instruction")
+	showInstructions := flag.Bool("print", false, "show instructions and their effect")
+	showCycles := flag.Bool("cycles", false, "show # of cycles required to execute instruction")
+	showInstBytes := flag.Bool("instbytes", false, "show the bytes that make up the instruction")
 	flag.Parse()
+
 	var programFileName string
 	if len(flag.Args()) > 0 {
 		programFileName = flag.Args()[0]
 	} else {
-		fmt.Println("Error: no filename provided")
-		fmt.Println("Usage: sim_8086 [-savemem] [-dumpreg] <filename>")
+		fmt.Println("Error: no file provided")
+		flag.PrintDefaults()
 		return
 	}
 
@@ -43,10 +51,11 @@ func main() {
 
 	//  while the IP is within the range of memory keep doing stuff
 	for ReadU16(RegisterValues[Register_ip], 0) < uint16(length) {
-		Simulate(instructions[int(ReadU16(RegisterValues[Register_ip], 0))], *printInstructions)
+		Simulate(instructions[int(ReadU16(RegisterValues[Register_ip], 0))], []bool{*showInstructions, *showCycles, *showInstBytes})
 	}
 
 	if *dumpRegisters {
+		fmt.Println()
 		fmt.Println(RegisterValues)
 		fmt.Println(CpuFlagValues)
 	}

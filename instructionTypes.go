@@ -39,6 +39,7 @@ const (
 	Op_add
 	Op_sub
 	Op_cmp
+
 	Op_je
 	Op_jl
 	Op_jle
@@ -50,6 +51,12 @@ const (
 	Op_jg
 	Op_ja
 	Op_jns
+	Op_jmp
+
+	Op_push
+	Op_pop
+	Op_call
+	Op_ret
 )
 
 var opTypeToString = map[OperationType]string{
@@ -69,6 +76,12 @@ var opTypeToString = map[OperationType]string{
 	Op_jg:  "jg",
 	Op_ja:  "ja",
 	Op_jns: "jns",
+	Op_jmp: "jmp",
+
+	Op_push: "push",
+	Op_pop:  "pop",
+	Op_call: "call",
+	Op_ret:  "ret",
 }
 
 type InstructionEncoding struct {
@@ -132,14 +145,22 @@ func (iop InstructionOperand) String() string {
 		return iop.Register.String()
 	case Operand_Memory:
 		return iop.EffectiveAddress.String()
+	default:
+		return "unexpected instruction operand got " + strconv.Itoa(int(iop.Type))
 	}
-	return "unexpected iop got " + strconv.Itoa(int(iop.Type))
 }
+
+type Size int
+
+const (
+	Byte Size = iota
+	Word
+)
 
 type EffectiveAddress struct {
 	EffectiveAddressExpression EffectiveAddressFieldEncoding // bx + si, bx + di, dp + di... etc whatever
 	Displacement               int
-	Size                       int // byte or word
+	Size                       Size // byte or word
 }
 
 func (e EffectiveAddress) CalculateLocation() uint16 {
@@ -256,14 +277,25 @@ func (i Instruction) String() string {
 	if i.InstructionOperands[0].Type != Operand_Register &&
 		i.InstructionOperands[1].Type != Operand_Register {
 		if i.Flags[Wide] {
-			sizePrefix = "word"
+			sizePrefix = " word"
 		} else {
-			sizePrefix = "byte"
+			sizePrefix = " byte"
 		}
 	}
+
 	if i.Flags[IsJump] {
 		return fmt.Sprintf("%s %s", opTypeToString[i.Op], i.InstructionOperands[1])
 	}
 
-	return fmt.Sprintf("%s %s %s, %s", opTypeToString[i.Op], sizePrefix, i.InstructionOperands[0], i.InstructionOperands[1])
+	switch i.Op {
+	case Op_push, Op_pop:
+		return fmt.Sprintf("%s%s %s", opTypeToString[i.Op], sizePrefix, i.InstructionOperands[0])
+	case Op_call:
+		return fmt.Sprintf("%s %s", opTypeToString[i.Op], i.InstructionOperands[1])
+	case Op_ret:
+		return fmt.Sprintf("%s", opTypeToString[i.Op])
+	default:
+		return fmt.Sprintf("%s%s %s, %s", opTypeToString[i.Op], sizePrefix, i.InstructionOperands[0], i.InstructionOperands[1])
+	}
+
 }

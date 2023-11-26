@@ -2,7 +2,12 @@ package main
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 )
+
+var totalCycles = 0
+var tookJump = false
 
 func WriteU16(memory []uint8, position, value uint16) {
 	// in little endian the least significant byte is stored at the lowest address
@@ -68,7 +73,7 @@ func UpdateFlags(result uint16) {
 	}
 }
 
-func HandleJump(jumpDistance uint16, flag bool) {
+func HandleJump(jumpDistance uint16, flag bool, instSize uint32) {
 	var calcJumpDistance int
 
 	// need to trim to 8bits for when i flip the bits
@@ -85,17 +90,81 @@ func HandleJump(jumpDistance uint16, flag bool) {
 	ipValue := ReadU16(RegisterValues[Register_ip], 0)
 
 	if flag {
-		newPosition := int(ipValue) + calcJumpDistance + 2
+		tookJump = true
+		newPosition := int(ipValue) + calcJumpDistance + int(instSize)
 		WriteU16(RegisterValues[Register_ip], 0, uint16(newPosition))
 	} else {
-		WriteU16(RegisterValues[Register_ip], 0, ipValue+2) // jumps are 2 bytes
+		tookJump = false
+		WriteU16(RegisterValues[Register_ip], 0, ipValue+uint16(instSize)) // jumps are 2 bytes, call is 3
 	}
 }
 
-func Simulate(instruction Instruction, doPrint bool) {
-	if doPrint {
-		fmt.Println(instruction)
+func PushValueToStack(value uint16) {
+	spValue := ReadU16(RegisterValues[Register_sp], 0)     // get current stack position
+	Write(MemoryValues.Bytes, spValue-2, value, true)      // write new value to stack
+	Write(RegisterValues[Register_sp], 0, spValue-2, true) // update stack pointer
+}
+
+func PopValueFromStack(dest []uint8, destPos uint16) {
+	spValue := ReadU16(RegisterValues[Register_sp], 0) // get current stack position
+	stackValue := ReadU16(MemoryValues.Bytes, spValue)
+	if spValue == 40_000 {
+		panic("attempt to pop from empty stack")
 	}
+	Write(MemoryValues.Bytes, spValue, 0, true)            // clear values on stack (set to 0) (lowk don't need)
+	Write(RegisterValues[Register_sp], 0, spValue+2, true) // update stack pointer
+	Write(dest, destPos, stackValue, true)                 // put value from sp into dest
+}
+
+func HandlePrint(instruction Instruction, showEffect []bool, initalIp uint16) {
+	_, _, destValue := ParseOperand(instruction.InstructionOperands[0])
+	_, _, srcValue := ParseOperand(instruction.InstructionOperands[1])
+
+	currFlags := CpuFlags{}
+	maps.Copy(currFlags, CpuFlagValues)
+
+	if showEffect[ShowInst] {
+		fmt.Printf("%-30s", instruction)
+	}
+
+	if showEffect[ShowInstBytes] {
+		fmt.Printf("%08b ", instruction.Bytes)
+	}
+
+	if showEffect[ShowCycles] {
+		cycles := CalculateInstructionCycles(instruction, tookJump)
+		totalCycles += cycles
+		fmt.Printf("%-25s", fmt.Sprintf(" cycles: + %d = %d ", cycles, totalCycles))
+	}
+
+	if showEffect[ShowInst] {
+		if instruction.InstructionOperands[0].Type == Operand_Register {
+			// print register update if there is one
+			fmt.Printf("%s", fmt.Sprintf("%s:%x->%x ", instruction.InstructionOperands[0].Register.String(), destValue, srcValue))
+		}
+		fmt.Printf("%s", fmt.Sprintf("ip:%x->%x ", initalIp, ReadU16(RegisterValues[Register_ip], 0)))
+
+		// print flags
+		isDiff := false
+		flagInfo := "Flags: "
+		for key := range currFlags {
+			if currFlags[key] != CpuFlagValues[key] {
+				isDiff = true
+				flagInfo += fmt.Sprintf("%s->%v ", key, CpuFlagValues[key])
+			}
+		}
+		if isDiff {
+			fmt.Printf(flagInfo)
+		}
+	}
+	if slices.Contains(showEffect, true) {
+		fmt.Println()
+	}
+}
+
+func Simulate(instruction Instruction, showEffect []bool) {
+	initialIPVal := ReadU16(RegisterValues[Register_ip], 0)
+	defer HandlePrint(instruction, showEffect, initialIPVal)
 
 	dest, destPos, destValue := ParseOperand(instruction.InstructionOperands[0])
 	_, _, srcValue := ParseOperand(instruction.InstructionOperands[1])
@@ -113,33 +182,50 @@ func Simulate(instruction Instruction, doPrint bool) {
 	case Op_cmp:
 		UpdateFlags(destValue - srcValue)
 	case Op_jne:
-		HandleJump(srcValue, !CpuFlagValues[ZeroFlag])
+		HandleJump(srcValue, !CpuFlagValues[ZeroFlag], 2)
 		return
 	case Op_je:
-		HandleJump(srcValue, CpuFlagValues[ZeroFlag])
+		HandleJump(srcValue, CpuFlagValues[ZeroFlag], instruction.Size)
 		return
 	case Op_jl, Op_js:
-		HandleJump(srcValue, CpuFlagValues[SignFlag])
+		HandleJump(srcValue, CpuFlagValues[SignFlag], instruction.Size)
 		return
 	case Op_jns:
-		HandleJump(srcValue, !CpuFlagValues[SignFlag])
+		HandleJump(srcValue, !CpuFlagValues[SignFlag], instruction.Size)
 		return
 	case Op_jnl, Op_jg:
-		HandleJump(srcValue, !CpuFlagValues[SignFlag])
+		HandleJump(srcValue, !CpuFlagValues[SignFlag], instruction.Size)
 		return
 	case Op_jle:
-		HandleJump(srcValue, CpuFlagValues[ZeroFlag] || CpuFlagValues[SignFlag])
+		HandleJump(srcValue, CpuFlagValues[ZeroFlag] || CpuFlagValues[SignFlag], instruction.Size)
 		return
 	case Op_ja:
-		HandleJump(srcValue, !CpuFlagValues[SignFlag] && !CpuFlagValues[ZeroFlag])
+		HandleJump(srcValue, !CpuFlagValues[SignFlag] && !CpuFlagValues[ZeroFlag], instruction.Size)
 		return
 	case Op_jbe:
-		HandleJump(srcValue, CpuFlagValues[SignFlag] || CpuFlagValues[ZeroFlag])
+		HandleJump(srcValue, CpuFlagValues[SignFlag] || CpuFlagValues[ZeroFlag], instruction.Size)
 		return
 	case Op_jb:
-		HandleJump(srcValue, CpuFlagValues[SignFlag] && !CpuFlagValues[ZeroFlag])
+		HandleJump(srcValue, CpuFlagValues[SignFlag] && !CpuFlagValues[ZeroFlag], instruction.Size)
 		return
+	case Op_jmp:
+		HandleJump(srcValue, true, instruction.Size)
+		return
+	case Op_push:
+		PushValueToStack(destValue)
+	case Op_pop:
+		PopValueFromStack(dest, destPos)
+	case Op_call:
+		PushValueToStack(ReadU16(RegisterValues[Register_ip], 0) + uint16(instruction.Size)) // end of this instruction not start
+		HandleJump(srcValue, true, instruction.Size)
+		return
+	case Op_ret:
+		PopValueFromStack(RegisterValues[Register_ip], 0)
+		return
+	default:
+		panic(fmt.Sprintf("unimplemented instruction %v", instruction))
 	}
+
 	// move IP
 	WriteU16(RegisterValues[Register_ip], 0, ReadU16(RegisterValues[Register_ip], 0)+uint16(instruction.Size))
 }

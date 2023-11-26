@@ -29,6 +29,7 @@ func (c CpuFlag) String() string {
 
 type CpuFlags map[CpuFlag]bool
 
+// CpuFlagValues this is technically a register but for convenience i'm using a map
 var CpuFlagValues = CpuFlags{
 	SignFlag: false, // if the last op has a negative result signed is true
 	ZeroFlag: false, // if the last op resulted in a value of 0 this is true
@@ -43,7 +44,7 @@ var RegisterValues = Registers{
 	Register_c: []uint8{0b0, 0b0},
 	Register_d: []uint8{0b0, 0b0},
 
-	Register_sp: []uint8{0b0, 0b0},
+	Register_sp: []uint8{0b01000000, 0b10011100}, // stack is from 40,000 -> 30,000 (grows up), little endina so most significant byte is 2nd [i+1]
 	Register_bp: []uint8{0b0, 0b0},
 	Register_si: []uint8{0b0, 0b0},
 	Register_di: []uint8{0b0, 0b0},

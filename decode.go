@@ -110,7 +110,7 @@ func TryDecode(memory Memory, at int, possibleInstruction InstructionEncoding) (
 
 		// Set Flags
 		if w == 0b1 {
-			// if word is used then w is set and dest must be wide
+			// if w is set, dest/src must be wide
 			decodedInst.Flags[Wide] = true
 		}
 		if has[Bits_IsJump] {
@@ -134,6 +134,12 @@ func TryDecode(memory Memory, at int, possibleInstruction InstructionEncoding) (
 				// Effective Address Calculation
 				(*dest).Type = Operand_Memory
 				(*dest).EffectiveAddress.Displacement = int(DispVal)
+
+				if w == 0b1 {
+					(*dest).EffectiveAddress.Size = Word
+				} else {
+					(*dest).EffectiveAddress.Size = Byte
+				}
 
 				if mod == 0b00 && rm == 0b110 {
 					(*dest).EffectiveAddress.EffectiveAddressExpression = EffectiveAddress_Direct_Address
